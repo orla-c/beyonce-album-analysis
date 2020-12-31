@@ -1,0 +1,210 @@
+---
+title: "Beyonce Albums"
+output: html_document
+---
+```{r intro, warning=FALSE, echo=FALSE, message=FALSE}
+
+library(usethis)
+use_git_config(user.name = "orla-c", 
+               user.email = "s1942599@ed.ac.uk")
+
+```
+
+
+```{r install_packages, warning=FALSE, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(rvest)
+
+```
+
+
+```{r get_data, warning=FALSE, echo=FALSE, message=FALSE}
+beyonce_lyrics <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-29/beyonce_lyrics.csv')
+sales <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-29/sales.csv')
+charts <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-29/charts.csv')
+```
+
+
+```{r clean_data, warning=FALSE, echo=FALSE, message=FALSE}
+
+# Beyonce -----------------------------------------------------------------
+
+
+bey_url <- "https://en.wikipedia.org/wiki/Beyonc%C3%A9_discography"
+
+raw_bey_html <- bey_url %>% 
+  read_html()
+
+bey_raw <- raw_bey_html %>% 
+  html_node("#mw-content-text > div.mw-parser-output > table:nth-child(14)") %>% 
+  #mw-content-text > div.mw-parser-output > table:nth-child(14) > tbody > tr:nth-child(3) > th > i > a
+  html_table(fill = TRUE) %>% 
+  data.frame() %>% 
+  janitor::clean_names() %>% 
+  tibble() %>% 
+  slice(-1, -nrow(.)) %>% 
+  mutate(album_details = str_split(album_details, "\n"),
+         sales = str_split(sales, "\n"),
+  ) %>% 
+  select(-certifications) %>% 
+  unnest_longer(album_details)  %>% 
+  separate(album_details, into = c("album_detail_type", "album_details"), sep = ": ") %>% 
+  mutate(album_detail_type = if_else(album_detail_type == "Re-edition", "Re-release", album_detail_type)) %>% 
+  pivot_wider(names_from = album_detail_type, values_from = album_details) %>% 
+  janitor::clean_names() 
+
+bey_sales <- bey_raw %>% 
+  unnest_longer(sales) %>% 
+  separate(sales, into = c("country", "sales"), sep = ": ") %>% 
+  mutate(sales = str_trim(sales),
+         sales = parse_number(sales)) %>% 
+  select(title, country, sales, released:label, formats = format)  %>% 
+  mutate(artist = "Beyoncé", .before = title)
+
+bey_chart <- bey_raw %>% 
+  select(title, released:label, formats = format, contains("peak_chart")) %>% 
+  pivot_longer(cols = contains("peak_chart"), names_to = "chart", values_to = "chart_position") %>% 
+  mutate(
+    chart = str_remove(chart, "peak_chart_positions"),
+    chart = case_when(
+      chart == "" ~ "US",
+      chart == "_1" ~ "AUS",
+      chart == "_2" ~ "CAN",
+      chart == "_3" ~ "FRA",
+      chart == "_4" ~ "GER",
+      chart == "_5" ~ "IRE",
+      chart == "_6" ~ "JPN",
+      chart == "_7" ~ "NZ",
+      chart == "_8" ~ "SWE",
+      chart == "_9" ~ "UK",
+      TRUE ~ NA_character_
+    )
+  ) %>% 
+  mutate(artist = "Beyoncé", .before = title)
+
+write_csv(bey_sales, "bey_sales.csv")
+write_csv(bey_chart, "bey_chart.csv")
+
+view(bey_sales)
+view(bey_chart)
+
+```
+
+# What album had the most/least sales in the world
+
+```{r bey_worldsales, fig.width = 8, warning=FALSE, message=FALSE}
+options(scipen=999)
+bey_sales_world <- bey_sales %>%
+  filter(country == "World") 
+
+bey_sales_world %>%
+  ggplot(mapping = aes(x=title, y=sales, fill = title))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "Beyonce Album World Sales", x= "Album Title", y="Sales")+
+  theme_minimal()
+```
+
+# What album had the most/least sales in the US
+
+```{r bey_sales_us, fig.width = 8, warning=FALSE, message=FALSE}
+bey_sales_us <- bey_sales %>%
+  filter(country == "US") 
+
+bey_sales_us %>%
+  ggplot(mapping = aes(x=title, y=sales, fill = title))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "Beyonce Album US Sales", x= "Album Title", y="Sales")+
+  theme_minimal()
+```
+
+
+# What album had the most/least sales in the UK
+
+```{r bey_sales_uk, fig.width = 8, warning=FALSE, message=FALSE}
+bey_sales_uk <- bey_sales %>%
+  filter(country == "UK") 
+
+bey_sales_uk %>%
+  ggplot(mapping = aes(x=title, y=sales, fill = title))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "Beyonce Album UK Sales", x= "Album Title", y="Sales")+
+  theme_minimal()
+
+```
+
+
+# Show the chart variations for each country and album
+## Chart Position for Dangerously in Love
+
+```{r charts_for_dil, warning=FALSE, message=FALSE}
+
+bey_dil <- bey_chart %>%
+  filter(title == "Dangerously in Love")%>%
+  mutate(chart_position= as.numeric(chart_position))
+
+bey_dil %>%
+  ggplot(mapping = aes(x=reorder(chart, chart_position), y= chart_position, fill = chart))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "Dangerously in Love Chart Position in Each Country", x= "Country", y="Chart Position")+
+  theme_minimal()
+```
+
+## Chart Postion for 4
+
+```{r, charts_for_4, warning=FALSE, message=FALSE}
+
+bey_4 <- bey_chart %>%
+  filter(title == "4")%>%
+  mutate(chart_position= as.numeric(chart_position))
+
+bey_4 %>%
+  ggplot(mapping = aes(x=reorder(chart, chart_position), y= chart_position, fill = chart))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "4 Chart Position in Each Country", x= "Country", y="Chart Position")+
+  theme_minimal()
+```
+
+## Chart Position for I Am...Sasha Fierce
+
+```{r charts_for_iasf, warning=FALSE, message=FALSE}
+
+bey_iasf <- bey_chart %>%
+  filter(title == "I Am... Sasha Fierce")%>%
+  mutate(chart_position= as.numeric(chart_position))
+
+bey_iasf %>%
+  ggplot(mapping = aes(x=reorder(chart, chart_position), y= chart_position, fill = chart))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "I Am...Sasha Fierce Chart Position in Each Country", x= "Country", y="Chart Position")+
+  theme_minimal()
+```
+
+## Chart Position for Beyonce
+
+```{r chart_for_beyonce, warning=FALSE, message=FALSE}
+
+bey_beyonce <- bey_chart %>%
+  filter(title == "Beyoncé")%>%
+  mutate(chart_position= as.numeric(chart_position))
+
+bey_beyonce %>%
+  ggplot(mapping = aes(x=reorder(chart, chart_position), y= chart_position, fill = chart))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "Beyoncé Chart Position in Each Country", x= "Country", y="Chart Position")+
+  theme_minimal()
+```
+
+## Chart Postion for B'Day
+
+```{r chart_for_bday, warning=FALSE, message=FALSE}
+
+bey_bday <- bey_chart %>%
+  filter(title == "B'Day")%>%
+  mutate(chart_position= as.numeric(chart_position))
+
+bey_bday %>%
+  ggplot(mapping = aes(x=reorder(chart, chart_position), y= chart_position, fill = chart))+
+  geom_col(show.legend = FALSE)+
+  labs(title = "B'Day Chart Position in Each Country", x= "Country", y="Chart Position")+
+  theme_minimal()
+```
